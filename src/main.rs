@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::{
     collections::HashMap,
-    io::{stdin, Read},
+    io::{self, stdin, Read, Write},
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
@@ -52,7 +52,11 @@ fn main() {
     if game.solutions.len() == 0 {
         return;
     }
-    println!("Lösungen anzeigen (j/n)?");
+    print!("Lösungen anzeigen (j/n)? ");
+    if let Err(e) = io::stdout().flush() {
+        eprintln!("Fehler beim Flushen: {}", e);
+        return;
+    }
     let mut character = [0];
     if let Ok(_) = stdin().read(&mut character) {
         if character[0] == b'j' {
@@ -340,7 +344,7 @@ fn check_for_solutions(
                         Calculation::Add(Box::new(calc1.clone()), Box::new(calc2.clone()))
                             .to_string(),
                     )
-                    .unwrap();
+                    .expect("Lösung konnte nicht gesendet werden");
                 }
             }
 
@@ -351,7 +355,7 @@ fn check_for_solutions(
                             Calculation::Sub(Box::new(calc1.clone()), Box::new(calc2.clone()))
                                 .to_string(),
                         )
-                        .unwrap();
+                        .expect("Lösung konnte nicht gesendet werden");
                     }
                 }
             }
@@ -363,7 +367,7 @@ fn check_for_solutions(
                             Calculation::Sub(Box::new(calc2.clone()), Box::new(calc1.clone()))
                                 .to_string(),
                         )
-                        .unwrap();
+                        .expect("Lösung konnte nicht gesendet werden");
                     }
                 }
             }
@@ -374,7 +378,7 @@ fn check_for_solutions(
                         Calculation::Mul(Box::new(calc1.clone()), Box::new(calc2.clone()))
                             .to_string(),
                     )
-                    .unwrap();
+                    .expect("Lösung konnte nicht gesendet werden");
                 }
             }
 
@@ -389,7 +393,7 @@ fn check_for_solutions(
                                 Calculation::Div(Box::new(calc1.clone()), Box::new(calc2.clone()))
                                     .to_string(),
                             )
-                            .unwrap();
+                            .expect("Lösung konnte nicht gesendet werden");
                         }
                     }
                 }
@@ -405,7 +409,7 @@ fn check_for_solutions(
                                 Calculation::Div(Box::new(calc2.clone()), Box::new(calc1.clone()))
                                     .to_string(),
                             )
-                            .unwrap();
+                            .expect("Lösung konnte nicht gesendet werden");
                         }
                     }
                 }
