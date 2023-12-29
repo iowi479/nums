@@ -50,46 +50,57 @@ fn main() {
     game.solve();
     game.solutions.sort_by(compare_solutions_by_score);
 
-    print!("Anzahl der gefundenen Lösungen anzeigen (j/n)? ");
-    if let Err(e) = io::stdout().flush() {
-        eprintln!("Konsolenfehler {}", e);
-        return;
-    }
+    'outer: loop {
+        print!("Anzahl der gefundenen Lösungen anzeigen (j/n)? ");
+        if let Err(e) = io::stdout().flush() {
+            eprintln!("Konsolenfehler {}", e);
+            return;
+        }
 
-    loop {
-        let mut character = [0];
-        if let Ok(_) = stdin().read(&mut character) {
-            match character[0] {
-                b'j' => {
-                    game.print_solution_amount();
-                    if game.solutions.len() == 0 {
-                        return;
-                    } else {
-                        break;
+        loop {
+            let mut character = String::new();
+            if let Ok(_) = stdin().read_line(&mut character) {
+                if character.len() != 2 {
+                    continue 'outer;
+                }
+
+                if let Some(c) = character.chars().next() {
+                    match c {
+                        'j' => {
+                            game.print_solution_amount();
+                            break 'outer;
+                        }
+                        'n' => return,
+                        _ => continue 'outer,
                     }
                 }
-                b'n' => return,
-                _ => continue,
             }
         }
     }
 
-    print!("Lösungen anzeigen (j/n)? ");
-    if let Err(e) = io::stdout().flush() {
-        eprintln!("Konsolenfehler {}", e);
-        return;
-    }
-
-    loop {
-        let mut character = [0];
-        if let Ok(_) = stdin().read(&mut character) {
-            match character[0] {
-                b'j' => {
-                    game.print_solutions();
-                    break;
+    'outer: loop {
+        print!("Lösungen anzeigen (j/n)? ");
+        if let Err(e) = io::stdout().flush() {
+            eprintln!("Konsolenfehler {}", e);
+            return;
+        }
+        loop {
+            let mut character = String::new();
+            if let Ok(_) = stdin().read_line(&mut character) {
+                if character.len() != 2 {
+                    continue 'outer;
                 }
-                b'n' => return,
-                _ => continue,
+
+                if let Some(c) = character.chars().next() {
+                    match c {
+                        'j' => {
+                            game.print_solutions();
+                            break 'outer;
+                        }
+                        'n' => return,
+                        _ => continue 'outer,
+                    }
+                }
             }
         }
     }
@@ -467,9 +478,9 @@ fn check_for_solutions(
 fn score_calculation(calc: &Calculation) -> u32 {
     match calc {
         Calculation::Add(a, b) => 2 + score_calculation(a) + score_calculation(b),
-        Calculation::Sub(a, b) => 3 + score_calculation(a) + score_calculation(b),
-        Calculation::Mul(a, b) => 4 + score_calculation(a) + score_calculation(b),
-        Calculation::Div(a, b) => 5 + score_calculation(a) + score_calculation(b),
+        Calculation::Sub(a, b) => 2 + score_calculation(a) + score_calculation(b),
+        Calculation::Mul(a, b) => 3 + score_calculation(a) + score_calculation(b),
+        Calculation::Div(a, b) => 3 + score_calculation(a) + score_calculation(b),
         Calculation::Cube(_, _) => 1,
     }
 }
