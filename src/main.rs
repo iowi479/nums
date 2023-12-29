@@ -48,20 +48,48 @@ fn main() {
 
     println!("{}", game);
     game.solve();
-    println!("{} Lösungen gefunden", game.solutions.len());
-    if game.solutions.len() == 0 {
+    game.solutions.sort_by(compare_solutions_by_score);
+
+    print!("Anzahl der gefundenen Lösungen anzeigen (j/n)? ");
+    if let Err(e) = io::stdout().flush() {
+        eprintln!("Konsolenfehler {}", e);
         return;
     }
+
+    loop {
+        let mut character = [0];
+        if let Ok(_) = stdin().read(&mut character) {
+            match character[0] {
+                b'j' => {
+                    game.print_solution_amount();
+                    if game.solutions.len() == 0 {
+                        return;
+                    } else {
+                        break;
+                    }
+                }
+                b'n' => return,
+                _ => continue,
+            }
+        }
+    }
+
     print!("Lösungen anzeigen (j/n)? ");
     if let Err(e) = io::stdout().flush() {
-        eprintln!("Fehler beim Flushen: {}", e);
+        eprintln!("Konsolenfehler {}", e);
         return;
     }
-    let mut character = [0];
-    if let Ok(_) = stdin().read(&mut character) {
-        if character[0] == b'j' {
-            for solution in game.solutions {
-                println!("\t{} = {}", solution, game.num);
+
+    loop {
+        let mut character = [0];
+        if let Ok(_) = stdin().read(&mut character) {
+            match character[0] {
+                b'j' => {
+                    game.print_solutions();
+                    break;
+                }
+                b'n' => return,
+                _ => continue,
             }
         }
     }
@@ -82,7 +110,7 @@ impl std::fmt::Display for Calculation {
 struct Game {
     num: u64,
     dices: [u64; 4],
-    solutions: Vec<String>,
+    solutions: Vec<Calculation>,
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
@@ -145,7 +173,7 @@ impl Game {
     }
 
     fn solve(&mut self) {
-        let (tx, rx): (Sender<String>, Receiver<String>) = mpsc::channel();
+        let (tx, rx): (Sender<Calculation>, Receiver<Calculation>) = mpsc::channel();
         let n = self.num.clone();
         let ds = self.dices.clone();
         thread::spawn(move || {
@@ -247,6 +275,24 @@ impl Game {
             self.solutions.push(received);
         }
     }
+
+    fn print_solution_amount(&self) {
+        println!("\n{} Lösungen gefunden\n", self.solutions.len());
+    }
+
+    fn print_solutions(&self) {
+        println!("\nEinfachste Lösung: {}", self.solutions[0]);
+        println!(
+            "Schwierigste Lösung: {}\n",
+            self.solutions[self.solutions.len() - 1]
+        );
+
+        println!("Alle {} Lösungen:", self.solutions.len());
+        for solution in &self.solutions {
+            println!("\t{} = {}", solution, self.num);
+        }
+        println!("\n");
+    }
 }
 
 impl std::fmt::Display for Game {
@@ -333,17 +379,17 @@ fn calculate_result_map(
 fn check_for_solutions(
     map1: &HashMap<u64, Calculation>,
     map2: &HashMap<u64, Calculation>,
-    tx: Sender<String>,
+    tx: Sender<Calculation>,
     n: u64,
 ) {
     for (r1, calc1) in map1 {
         for (r2, calc2) in map2 {
             if let Some(add) = r1.checked_add(*r2) {
                 if add == n {
-                    tx.send(
-                        Calculation::Add(Box::new(calc1.clone()), Box::new(calc2.clone()))
-                            .to_string(),
-                    )
+                    tx.send(Calculation::Add(
+                        Box::new(calc1.clone()),
+                        Box::new(calc2.clone()),
+                    ))
                     .expect("Lösung konnte nicht gesendet werden");
                 }
             }
@@ -351,10 +397,10 @@ fn check_for_solutions(
             if r1 >= r2 {
                 if let Some(sub) = r1.checked_sub(*r2) {
                     if sub == n {
-                        tx.send(
-                            Calculation::Sub(Box::new(calc1.clone()), Box::new(calc2.clone()))
-                                .to_string(),
-                        )
+                        tx.send(Calculation::Sub(
+                            Box::new(calc1.clone()),
+                            Box::new(calc2.clone()),
+                        ))
                         .expect("Lösung konnte nicht gesendet werden");
                     }
                 }
@@ -363,10 +409,10 @@ fn check_for_solutions(
             if r2 >= r1 {
                 if let Some(sub) = r2.checked_sub(*r1) {
                     if sub == n {
-                        tx.send(
-                            Calculation::Sub(Box::new(calc2.clone()), Box::new(calc1.clone()))
-                                .to_string(),
-                        )
+                        tx.send(Calculation::Sub(
+                            Box::new(calc2.clone()),
+                            Box::new(calc1.clone()),
+                        ))
                         .expect("Lösung konnte nicht gesendet werden");
                     }
                 }
@@ -374,10 +420,10 @@ fn check_for_solutions(
 
             if let Some(mult) = r1.checked_mul(*r2) {
                 if mult == n {
-                    tx.send(
-                        Calculation::Mul(Box::new(calc1.clone()), Box::new(calc2.clone()))
-                            .to_string(),
-                    )
+                    tx.send(Calculation::Mul(
+                        Box::new(calc1.clone()),
+                        Box::new(calc2.clone()),
+                    ))
                     .expect("Lösung konnte nicht gesendet werden");
                 }
             }
@@ -389,10 +435,10 @@ fn check_for_solutions(
                 if let Some(div) = r1.checked_div(*r2) {
                     if div * *r2 == *r1 {
                         if div as u64 == n {
-                            tx.send(
-                                Calculation::Div(Box::new(calc1.clone()), Box::new(calc2.clone()))
-                                    .to_string(),
-                            )
+                            tx.send(Calculation::Div(
+                                Box::new(calc1.clone()),
+                                Box::new(calc2.clone()),
+                            ))
                             .expect("Lösung konnte nicht gesendet werden");
                         }
                     }
@@ -405,15 +451,36 @@ fn check_for_solutions(
                 if let Some(div) = r2.checked_div(*r1) {
                     if div * *r1 == *r2 {
                         if div as u64 == n {
-                            tx.send(
-                                Calculation::Div(Box::new(calc2.clone()), Box::new(calc1.clone()))
-                                    .to_string(),
-                            )
+                            tx.send(Calculation::Div(
+                                Box::new(calc2.clone()),
+                                Box::new(calc1.clone()),
+                            ))
                             .expect("Lösung konnte nicht gesendet werden");
                         }
                     }
                 }
             }
         }
+    }
+}
+
+fn score_calculation(calc: &Calculation) -> u32 {
+    match calc {
+        Calculation::Add(a, b) => 2 + score_calculation(a) + score_calculation(b),
+        Calculation::Sub(a, b) => 3 + score_calculation(a) + score_calculation(b),
+        Calculation::Mul(a, b) => 4 + score_calculation(a) + score_calculation(b),
+        Calculation::Div(a, b) => 5 + score_calculation(a) + score_calculation(b),
+        Calculation::Cube(_, _) => 1,
+    }
+}
+
+fn compare_solutions_by_score(a: &Calculation, b: &Calculation) -> std::cmp::Ordering {
+    let score_a = score_calculation(a);
+    let score_b = score_calculation(b);
+
+    if score_a <= score_b {
+        return std::cmp::Ordering::Less;
+    } else {
+        return std::cmp::Ordering::Greater;
     }
 }
