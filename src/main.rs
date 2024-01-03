@@ -1,22 +1,20 @@
 use rand::Rng;
 use std::{
     collections::HashMap,
-    io::{self, stdin, Read, Write},
-    sync::mpsc::{self, Receiver, Sender},
+    io::{self, stdin, Write},
+    sync::mpsc::{self, Receiver, SendError, Sender},
     thread,
 };
 
-fn main() {
-    let args = std::env::args().collect::<Vec<String>>();
-
-    let mut game = match args.len() {
-        1 => Game::new(),
-        2 => Game::of_number(
+fn args_to_game(args: Vec<String>) -> Result<Game, ()> {
+    return match args.len() {
+        1 => Ok(Game::new()),
+        2 => Ok(Game::of_number(
             args[1]
                 .parse::<u64>()
                 .expect("Argument <Nummer> muss eine Zahl sein"),
-        ),
-        6 => Game::of(
+        )),
+        6 => Ok(Game::of(
             args[1]
                 .parse::<u64>()
                 .expect("Argument <Nummer> muss eine Zahl sein"),
@@ -34,7 +32,7 @@ fn main() {
                     .parse::<u64>()
                     .expect("Argument <Würfel4> muss eine Zahl sein"),
             ],
-        ),
+        )),
         _ => {
             println!("Aufruf: ");
             println!("./nums <Nummer> <Würfel1> <Würfel2> <Würfel3> <Würfel4>");
@@ -42,19 +40,17 @@ fn main() {
             println!(" - 0 Argumente: Zufällige Zahl und Würfel");
             println!(" - 1 Argument: Vorgegebene Zahl und zufällige Würfel");
             println!(" - 4 Argumente: Vorgegebene Zahl und Würfel");
-            return;
+            Err(())
         }
     };
+}
 
-    println!("{}", game);
-    game.solve();
-    game.solutions.sort_by(compare_solutions_by_score);
-
+fn get_yn_input(question: &str) -> Result<(), ()> {
     'outer: loop {
-        print!("Anzahl der gefundenen Lösungen anzeigen (j/n)? ");
+        print!("{}", question);
         if let Err(e) = io::stdout().flush() {
             eprintln!("Konsolenfehler {}", e);
-            return;
+            return Err(());
         }
 
         loop {
@@ -66,43 +62,39 @@ fn main() {
 
                 if let Some(c) = character.chars().next() {
                     match c {
-                        'j' => {
-                            game.print_solution_amount();
-                            break 'outer;
-                        }
-                        'n' => return,
+                        'j' => return Ok(()),
+                        'n' => return Err(()),
                         _ => continue 'outer,
                     }
                 }
             }
         }
     }
+}
 
-    'outer: loop {
-        print!("Lösungen anzeigen (j/n)? ");
-        if let Err(e) = io::stdout().flush() {
-            eprintln!("Konsolenfehler {}", e);
+fn main() {
+    let args = std::env::args().collect::<Vec<String>>();
+
+    if let Ok(mut game) = args_to_game(args) {
+        game.print_game();
+        game.solve();
+        game.solutions.sort_by(compare_solutions_by_score);
+
+        if get_yn_input("Anzahl der gefundenen Lösungen anzeigen (j/n)? ").is_err() {
             return;
         }
-        loop {
-            let mut character = String::new();
-            if let Ok(_) = stdin().read_line(&mut character) {
-                if character.len() != 2 {
-                    continue 'outer;
-                }
 
-                if let Some(c) = character.chars().next() {
-                    match c {
-                        'j' => {
-                            game.print_solutions();
-                            break 'outer;
-                        }
-                        'n' => return,
-                        _ => continue 'outer,
-                    }
-                }
-            }
+        game.print_solution_amount();
+
+        if game.solutions.len() == 0 {
+            return;
         }
+
+        if get_yn_input("Lösungen anzeigen (j/n)? ").is_err() {
+            return;
+        }
+
+        game.print_solutions();
     }
 }
 
@@ -131,7 +123,7 @@ enum UsedCubes {
     ThreeCubes(u64, u64, u64),
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq)]
 enum Calculation {
     Add(Box<Calculation>, Box<Calculation>),
     Sub(Box<Calculation>, Box<Calculation>),
@@ -236,7 +228,9 @@ impl Game {
                                 continue;
                             }
 
-                            check_for_solutions(map1, map2, tx.clone(), n.clone());
+                            if let Err(e) = check_for_solutions(map1, map2, tx.clone(), n.clone()) {
+                                eprintln!("Kanalfehler {}", e);
+                            }
                         }
                     }
                 }
@@ -272,7 +266,9 @@ impl Game {
                                 continue;
                             }
 
-                            check_for_solutions(map1, map2, tx.clone(), n.clone());
+                            if let Err(e) = check_for_solutions(map1, map2, tx.clone(), n.clone()) {
+                                eprintln!("Kanalfehler {}", e);
+                            }
                         }
                     }
                 }
@@ -287,16 +283,24 @@ impl Game {
         }
     }
 
+    fn print_game(&self) {
+        println!("{}", self);
+    }
+
     fn print_solution_amount(&self) {
         println!("\n{} Lösungen gefunden\n", self.solutions.len());
     }
 
     fn print_solutions(&self) {
-        println!("\nEinfachste Lösung: {}", self.solutions[0]);
-        println!(
-            "Schwierigste Lösung: {}\n",
-            self.solutions[self.solutions.len() - 1]
-        );
+        if self.solutions.len() >= 2 {
+            println!("\nEinfachste Lösung: {}", self.solutions[0]);
+            println!(
+                "Schwierigste Lösung: {}\n",
+                self.solutions[self.solutions.len() - 1]
+            );
+        } else {
+            println!("");
+        }
 
         println!("Alle {} Lösungen:", self.solutions.len());
         for solution in &self.solutions {
@@ -325,10 +329,17 @@ fn calculate_result_map(
     for (res1, calc1) in map1.iter() {
         for (res2, calc2) in map2.iter() {
             if let Some(add) = res1.checked_add(*res2) {
-                result_map.insert(
-                    add,
-                    Calculation::Add(Box::new(calc1.clone()), Box::new(calc2.clone())),
-                );
+                if res1 >= res2 {
+                    result_map.insert(
+                        add,
+                        Calculation::Add(Box::new(calc1.clone()), Box::new(calc2.clone())),
+                    );
+                } else {
+                    result_map.insert(
+                        add,
+                        Calculation::Add(Box::new(calc2.clone()), Box::new(calc1.clone())),
+                    );
+                }
             }
 
             if res1 >= res2 {
@@ -349,10 +360,17 @@ fn calculate_result_map(
             }
 
             if let Some(mult) = res1.checked_mul(*res2) {
-                result_map.insert(
-                    mult,
-                    Calculation::Mul(Box::new(calc1.clone()), Box::new(calc2.clone())),
-                );
+                if res1 >= res2 {
+                    result_map.insert(
+                        mult,
+                        Calculation::Mul(Box::new(calc1.clone()), Box::new(calc2.clone())),
+                    );
+                } else {
+                    result_map.insert(
+                        mult,
+                        Calculation::Mul(Box::new(calc2.clone()), Box::new(calc1.clone())),
+                    );
+                }
             }
 
             if *res2 > 0 {
@@ -392,7 +410,7 @@ fn check_for_solutions(
     map2: &HashMap<u64, Calculation>,
     tx: Sender<Calculation>,
     n: u64,
-) {
+) -> Result<(), SendError<Calculation>> {
     for (r1, calc1) in map1 {
         for (r2, calc2) in map2 {
             if let Some(add) = r1.checked_add(*r2) {
@@ -400,8 +418,7 @@ fn check_for_solutions(
                     tx.send(Calculation::Add(
                         Box::new(calc1.clone()),
                         Box::new(calc2.clone()),
-                    ))
-                    .expect("Lösung konnte nicht gesendet werden");
+                    ))?;
                 }
             }
 
@@ -411,8 +428,7 @@ fn check_for_solutions(
                         tx.send(Calculation::Sub(
                             Box::new(calc1.clone()),
                             Box::new(calc2.clone()),
-                        ))
-                        .expect("Lösung konnte nicht gesendet werden");
+                        ))?;
                     }
                 }
             }
@@ -423,8 +439,7 @@ fn check_for_solutions(
                         tx.send(Calculation::Sub(
                             Box::new(calc2.clone()),
                             Box::new(calc1.clone()),
-                        ))
-                        .expect("Lösung konnte nicht gesendet werden");
+                        ))?;
                     }
                 }
             }
@@ -434,8 +449,7 @@ fn check_for_solutions(
                     tx.send(Calculation::Mul(
                         Box::new(calc1.clone()),
                         Box::new(calc2.clone()),
-                    ))
-                    .expect("Lösung konnte nicht gesendet werden");
+                    ))?;
                 }
             }
 
@@ -449,8 +463,7 @@ fn check_for_solutions(
                             tx.send(Calculation::Div(
                                 Box::new(calc1.clone()),
                                 Box::new(calc2.clone()),
-                            ))
-                            .expect("Lösung konnte nicht gesendet werden");
+                            ))?;
                         }
                     }
                 }
@@ -465,23 +478,23 @@ fn check_for_solutions(
                             tx.send(Calculation::Div(
                                 Box::new(calc2.clone()),
                                 Box::new(calc1.clone()),
-                            ))
-                            .expect("Lösung konnte nicht gesendet werden");
+                            ))?;
                         }
                     }
                 }
             }
         }
     }
+    Ok(())
 }
 
 fn score_calculation(calc: &Calculation) -> u32 {
     match calc {
-        Calculation::Add(a, b) => 2 + score_calculation(a) + score_calculation(b),
-        Calculation::Sub(a, b) => 2 + score_calculation(a) + score_calculation(b),
-        Calculation::Mul(a, b) => 3 + score_calculation(a) + score_calculation(b),
-        Calculation::Div(a, b) => 3 + score_calculation(a) + score_calculation(b),
-        Calculation::Cube(_, _) => 1,
+        Calculation::Add(a, b) => 20 + score_calculation(a) + score_calculation(b),
+        Calculation::Sub(a, b) => 21 + score_calculation(a) + score_calculation(b),
+        Calculation::Mul(a, b) => 30 + score_calculation(a) + score_calculation(b),
+        Calculation::Div(a, b) => 34 + score_calculation(a) + score_calculation(b),
+        Calculation::Cube(_, v) => 10 + 2 * v.ilog10(),
     }
 }
 
@@ -493,5 +506,46 @@ fn compare_solutions_by_score(a: &Calculation, b: &Calculation) -> std::cmp::Ord
         return std::cmp::Ordering::Less;
     } else {
         return std::cmp::Ordering::Greater;
+    }
+}
+
+impl PartialEq for Calculation {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Calculation::Cube(_, v) => {
+                if let Calculation::Cube(_, w) = other {
+                    return v == w;
+                }
+            }
+
+            Calculation::Add(a, b) => {
+                if let Calculation::Add(c, d) = other {
+                    return (*a == *c && *b == *d) || (*a == *d && *b == *c);
+                }
+            }
+
+            Calculation::Sub(a, b) => {
+                if let Calculation::Sub(c, d) = other {
+                    return *a == *c && *b == *d;
+                }
+            }
+
+            Calculation::Mul(a, b) => {
+                if let Calculation::Mul(c, d) = other {
+                    return (*a == *c && *b == *d) || (*a == *d && *b == *c);
+                }
+            }
+
+            Calculation::Div(a, b) => {
+                if let Calculation::Div(c, d) = other {
+                    return *a == *c && *b == *d;
+                }
+            }
+        }
+        return false;
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        return !self.eq(other);
     }
 }
