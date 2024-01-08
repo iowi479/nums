@@ -1,10 +1,8 @@
 use rand::Rng;
-use std::{
-    collections::HashMap,
-    io::{self, stdin, Write},
-    sync::mpsc::{self, Receiver, SendError, Sender},
-    thread,
-};
+use std::collections::HashMap;
+use std::io::{self, Write};
+use std::sync::mpsc::{self, Receiver, SendError, Sender};
+use std::thread;
 
 fn args_to_game(args: Vec<String>) -> Result<Game, ()> {
     return match args.len() {
@@ -55,7 +53,7 @@ fn get_yn_input(question: &str) -> Result<(), ()> {
 
         loop {
             let mut character = String::new();
-            if let Ok(_) = stdin().read_line(&mut character) {
+            if let Ok(_) = io::stdin().read_line(&mut character) {
                 if character.len() != 2 {
                     continue 'outer;
                 }
