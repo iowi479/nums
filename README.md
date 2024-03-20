@@ -7,7 +7,7 @@ In addition you roll 4 dice, each with the numbers 1-6.
 
 The goal of this game is to find a way to calculate the target-number using the 4 dice.
 
-The numbers on the dice can be used as is or you can multiply them by 10.
+The numbers on the dice can be used as is or you can multiply them by faktors of 10.
 So the number 3 could be used as a 3, 30, 300, etc.
 
 To combine the numbers you can use the following operations:
