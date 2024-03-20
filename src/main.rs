@@ -37,7 +37,7 @@ fn args_to_game(args: Vec<String>) -> Result<Game, ()> {
             println!("Möglichkeiten:");
             println!(" - 0 Argumente: Zufällige Zahl und Würfel");
             println!(" - 1 Argument: Vorgegebene Zahl und zufällige Würfel");
-            println!(" - 4 Argumente: Vorgegebene Zahl und Würfel");
+            println!(" - 55555 Argumente: Vorgegebene Zahl und Würfel");
             Err(())
         }
     };
