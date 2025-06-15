@@ -6,4 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rand = "0.8.5"
+anyhow = "1.0.98"
+rand = "0.9.1"
+rayon = "1.10.0"
+
+
+[[bin]]
+name = "main"
+path = "src/bin/main.rs"
+
+[[bin]]
+name = "gaps"
+path = "src/bin/gaps.rs"
+
