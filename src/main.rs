@@ -6,31 +6,71 @@ use std::thread;
 
 fn args_to_game(args: Vec<String>) -> Result<Game, ()> {
     return match args.len() {
-        1 => Ok(Game::new()),
-        2 => Ok(Game::of_number(
-            args[1]
+        1 => {
+            println!("Provide the amount of cubes to play with...");
+            Err(())
+        }
+        2 => {
+            let amount_cubes = match args[1].parse::<u8>().unwrap() {
+                3 => DiceAmount::Three,
+                4 => DiceAmount::Four,
+                _ => {
+                    println!("Nur 3 oder 4 Würfel sind erlaubt.");
+                    return Err(());
+                }
+            };
+            Ok(Game::new(amount_cubes))
+        }
+        3 => {
+            let amount_cubes = match args[1].parse::<u8>().unwrap() {
+                3 => DiceAmount::Three,
+                4 => DiceAmount::Four,
+                _ => {
+                    println!("Nur 3 oder 4 Würfel sind erlaubt.");
+                    return Err(());
+                }
+            };
+            let num = args[2]
                 .parse::<u64>()
-                .expect("Argument <Nummer> muss eine Zahl sein"),
-        )),
-        6 => Ok(Game::of(
-            args[1]
+                .expect("Argument <Nummer> muss eine Zahl sein");
+
+            Ok(Game::of_number(amount_cubes, num))
+        }
+
+        6 | 7 => {
+            let amount_cubes = match args[1].parse::<u8>().unwrap() {
+                3 => DiceAmount::Three,
+                4 => DiceAmount::Four,
+                _ => {
+                    println!("Nur 3 oder 4 Würfel sind erlaubt.");
+                    return Err(());
+                }
+            };
+            let num = args[2]
                 .parse::<u64>()
-                .expect("Argument <Nummer> muss eine Zahl sein"),
-            [
-                args[2]
+                .expect("Argument <Nummer> muss eine Zahl sein");
+
+            let mut dices = [0; 4];
+            dices[0] = args[3]
+                .parse::<u64>()
+                .expect("Argument <Würfel1> muss eine Zahl sein");
+
+            dices[1] = args[4]
+                .parse::<u64>()
+                .expect("Argument <Würfel2> muss eine Zahl sein");
+
+            dices[2] = args[5]
+                .parse::<u64>()
+                .expect("Argument <Würfel2> muss eine Zahl sein");
+
+            if args.len() > 6 {
+                dices[3] = args[6]
                     .parse::<u64>()
-                    .expect("Argument <Würfel1> muss eine Zahl sein"),
-                args[3]
-                    .parse::<u64>()
-                    .expect("Argument <Würfel2> muss eine Zahl sein"),
-                args[4]
-                    .parse::<u64>()
-                    .expect("Argument <Würfel3> muss eine Zahl sein"),
-                args[5]
-                    .parse::<u64>()
-                    .expect("Argument <Würfel4> muss eine Zahl sein"),
-            ],
-        )),
+                    .expect("Argument <Würfel2> muss eine Zahl sein");
+            }
+
+            Ok(Game::of(amount_cubes, num, dices))
+        }
         _ => {
             println!("Aufruf: ");
             println!("./nums <Nummer> <Würfel1> <Würfel2> <Würfel3> <Würfel4>");
@@ -108,7 +148,13 @@ impl std::fmt::Display for Calculation {
     }
 }
 
+enum DiceAmount {
+    Four,
+    Three,
+}
+
 struct Game {
+    num_dices: DiceAmount,
     num: u64,
     dices: [u64; 4],
     solutions: Vec<Calculation>,
@@ -131,9 +177,13 @@ enum Calculation {
 }
 
 impl Game {
-    fn new() -> Self {
+    fn new(num_dices: DiceAmount) -> Self {
         let mut rng = rand::thread_rng();
-        let num: u64 = rng.gen_range(100..=999);
+
+        let num: u64 = match num_dices {
+            DiceAmount::Three => rng.gen_range(1..=99),
+            DiceAmount::Four => rng.gen_range(100..=999),
+        };
 
         let dices = [
             rng.gen_range(1..=6),
@@ -143,21 +193,23 @@ impl Game {
         ];
 
         Self {
+            num_dices,
             num,
             dices,
             solutions: Vec::new(),
         }
     }
 
-    fn of(n: u64, dices: [u64; 4]) -> Self {
+    fn of(num_dices: DiceAmount, num: u64, dices: [u64; 4]) -> Self {
         Self {
-            num: n,
+            num_dices,
+            num,
             dices,
             solutions: Vec::new(),
         }
     }
 
-    fn of_number(num: u64) -> Self {
+    fn of_number(num_dices: DiceAmount, num: u64) -> Self {
         let mut rng = rand::thread_rng();
         let dices = [
             rng.gen_range(1..=6),
@@ -167,6 +219,7 @@ impl Game {
         ];
 
         Self {
+            num_dices,
             num,
             dices,
             solutions: Vec::new(),
@@ -174,6 +227,85 @@ impl Game {
     }
 
     fn solve(&mut self) {
+        match self.num_dices {
+            DiceAmount::Three => self.solve_three(),
+            DiceAmount::Four => self.solve_four(),
+        }
+    }
+
+    fn solve_three(&mut self) {
+        let (tx, rx): (Sender<Calculation>, Receiver<Calculation>) = mpsc::channel();
+        let n = self.num.clone();
+        let mut ds: [u64; 3] = [0; 3];
+        ds.copy_from_slice(&self.dices[0..3]);
+
+        thread::spawn(move || {
+            let mut dp: HashMap<UsedCubes, HashMap<u64, Calculation>> = HashMap::new();
+
+            // single cubes
+            for (i, c) in ds.iter().enumerate() {
+                let mut map: HashMap<u64, Calculation> = HashMap::new();
+                map.insert(*c, Calculation::Cube(i, *c));
+                map.insert((*c) * 10, Calculation::Cube(i, (*c) * 10));
+                map.insert((*c) * 100, Calculation::Cube(i, (*c) * 100));
+                map.insert((*c) * 1000, Calculation::Cube(i, (*c) * 1000));
+
+                map.insert((*c) * 10000, Calculation::Cube(i, (*c) * 10000));
+                map.insert((*c) * 100000, Calculation::Cube(i, (*c) * 100000));
+                map.insert((*c) * 1000000, Calculation::Cube(i, (*c) * 1000000));
+                map.insert((*c) * 10000000, Calculation::Cube(i, (*c) * 10000000));
+
+                dp.insert(UsedCubes::OneCube(i as u64), map);
+            }
+
+            // two cubes
+            let mut maps = Vec::new();
+
+            for (c1, map1) in dp.iter() {
+                for (c2, map2) in dp.iter() {
+                    let UsedCubes::OneCube(c1) = c1 else { panic!() };
+                    let UsedCubes::OneCube(c2) = c2 else { panic!() };
+
+                    if c1 <= c2 {
+                        continue;
+                    }
+
+                    let map: HashMap<u64, Calculation> = calculate_result_map(map1, map2);
+                    maps.push((UsedCubes::TwoCubes(*c1, *c2), map));
+                }
+            }
+
+            while let Some((c, m)) = maps.pop() {
+                dp.insert(c, m);
+            }
+
+            // three cubes
+            for (cubes1, map1) in dp.iter() {
+                if let UsedCubes::OneCube(c1) = cubes1 {
+                    for (cubes2, map2) in dp.iter() {
+                        if let UsedCubes::TwoCubes(c2, c3) = cubes2 {
+                            if c1 == c2 || c1 == c3 {
+                                continue;
+                            }
+
+                            if let Err(e) = check_for_solutions(map1, map2, tx.clone(), n.clone()) {
+                                eprintln!("Kanalfehler {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        for received in rx {
+            if self.solutions.contains(&received) {
+                continue;
+            }
+            self.solutions.push(received);
+        }
+    }
+
+    fn solve_four(&mut self) {
         let (tx, rx): (Sender<Calculation>, Receiver<Calculation>) = mpsc::channel();
         let n = self.num.clone();
         let ds = self.dices.clone();
@@ -310,11 +442,16 @@ impl Game {
 
 impl std::fmt::Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dices = match self.num_dices {
+            DiceAmount::Three => &self.dices[0..3],
+            DiceAmount::Four => &self.dices,
+        };
+
         write!(
             f,
             "\n{}\n\n{}\n",
             number_console_string(self.num),
-            dices_console_string(self.dices),
+            dices_console_string(dices),
         )
     }
 }
@@ -669,7 +806,7 @@ fn digits_console_string(num: u64) -> String {
     return lines.join("\n");
 }
 
-fn dices_console_string(dices: [u64; 4]) -> String {
+fn dices_console_string(dices: &[u64]) -> String {
     let mut lines = vec![String::from("     "); 6];
 
     lines[0] += "__          ___   _       __     _         ";
@@ -680,7 +817,7 @@ fn dices_console_string(dices: [u64; 4]) -> String {
     lines[5] += "    \\/  \\/    \\__,_|_|  |_| \\___|_| (_)    ";
 
     for dice in dices {
-        let d = digits_console_string(dice);
+        let d = digits_console_string(*dice);
         let mut s = d.split("\n");
         for i in 0..6 {
             lines[i] += s.next().unwrap();
