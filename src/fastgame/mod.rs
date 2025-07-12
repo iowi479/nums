@@ -55,6 +55,251 @@ impl Game {
         }
     }
 
+    pub fn solve_three_fast(
+        &mut self,
+        min: u16,
+        max: u16,
+        dices: [u8; MAX_DICES],
+        solutions: &mut Vec<u16>,
+    ) {
+        self.solutions.clear();
+        self.dp.clear();
+        let mut ds: [DiceValue; 3] = [0; 3];
+        ds[0] = dices[0] as DiceValue;
+        ds[1] = dices[1] as DiceValue;
+        ds[2] = dices[2] as DiceValue;
+
+        let mut checking = HashSet::new();
+        let mut found = HashSet::new();
+        for i in min..max {
+            checking.insert(i);
+        }
+
+        // single cubes
+        for (i, c) in ds.iter().enumerate() {
+            let mut map: HashMap<DiceValue, Calculation> = self
+                .result_map_pool
+                .pop()
+                .or_else(|| Some(HashMap::new()))
+                .unwrap();
+
+            map.insert(*c, Calculation::Cube(i, *c));
+            map.insert((*c) * 10, Calculation::Cube(i, (*c) * 10));
+            map.insert((*c) * 100, Calculation::Cube(i, (*c) * 100));
+            map.insert((*c) * 1000, Calculation::Cube(i, (*c) * 1000));
+
+            map.insert((*c) * 10000, Calculation::Cube(i, (*c) * 10000));
+            map.insert((*c) * 100000, Calculation::Cube(i, (*c) * 100000));
+            map.insert((*c) * 1000000, Calculation::Cube(i, (*c) * 1000000));
+            map.insert((*c) * 10000000, Calculation::Cube(i, (*c) * 10000000));
+
+            self.dp.insert(UsedCubes::OneCube(i as DiceValue), map);
+        }
+
+        // two cubes
+        let mut maps = Vec::new();
+
+        for (c1, map1) in self.dp.iter() {
+            for (c2, map2) in self.dp.iter() {
+                let UsedCubes::OneCube(c1) = c1 else { panic!() };
+                let UsedCubes::OneCube(c2) = c2 else { panic!() };
+
+                if c1 <= c2 {
+                    continue;
+                }
+
+                let mut map: HashMap<DiceValue, Calculation> = self
+                    .result_map_pool
+                    .pop()
+                    .or_else(|| Some(HashMap::new()))
+                    .unwrap();
+
+                calculate_result_map(map1, map2, &mut map);
+                maps.push((UsedCubes::TwoCubes(*c1, *c2), map));
+            }
+        }
+
+        self.dp.extend(maps);
+
+        // three cubes
+        for (cubes1, map1) in self.dp.iter() {
+            if let UsedCubes::OneCube(c1) = cubes1 {
+                for (cubes2, map2) in self.dp.iter() {
+                    if let UsedCubes::TwoCubes(c2, c3) = cubes2 {
+                        if c1 == c2 || c1 == c3 {
+                            continue;
+                        }
+
+                        checking.retain(|x| {
+                            if has_solution(map1, map2, *x as DiceValue) {
+                                let _ = found.insert(*x);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        for (_, mut map1) in self.dp.drain() {
+            map1.clear();
+            self.result_map_pool.push(map1);
+        }
+
+        let mut found = found.iter().collect::<Vec<_>>();
+        found.sort();
+        solutions.clear();
+        solutions.extend(found.iter().map(|&&x| x as u16));
+    }
+
+    pub fn solve_four_fast(
+        &mut self,
+        min: u16,
+        max: u16,
+        dices: [u8; MAX_DICES],
+        solutions: &mut Vec<u16>,
+    ) {
+        self.solutions.clear();
+        self.dp.clear();
+        let mut ds: [DiceValue; 4] = [0; 4];
+        ds[0] = dices[0] as DiceValue;
+        ds[1] = dices[1] as DiceValue;
+        ds[2] = dices[2] as DiceValue;
+        ds[3] = dices[3] as DiceValue;
+
+        let mut checking = HashSet::new();
+        let mut found = HashSet::new();
+        for i in min..max {
+            checking.insert(i);
+        }
+
+        let mut dp: HashMap<UsedCubes, HashMap<DiceValue, Calculation>> = HashMap::new();
+
+        // single cubes
+        for (i, c) in ds.iter().enumerate() {
+            let mut map: HashMap<DiceValue, Calculation> = HashMap::new();
+            map.insert(*c, Calculation::Cube(i, *c));
+            map.insert((*c) * 10, Calculation::Cube(i, (*c) * 10));
+            map.insert((*c) * 100, Calculation::Cube(i, (*c) * 100));
+            map.insert((*c) * 1000, Calculation::Cube(i, (*c) * 1000));
+
+            map.insert((*c) * 10000, Calculation::Cube(i, (*c) * 10000));
+            map.insert((*c) * 100000, Calculation::Cube(i, (*c) * 100000));
+            map.insert((*c) * 1000000, Calculation::Cube(i, (*c) * 1000000));
+            map.insert((*c) * 10000000, Calculation::Cube(i, (*c) * 10000000));
+
+            dp.insert(UsedCubes::OneCube(i as DiceValue), map);
+        }
+
+        // two cubes
+        let mut maps = Vec::new();
+
+        for (c1, map1) in dp.iter() {
+            for (c2, map2) in dp.iter() {
+                let UsedCubes::OneCube(c1) = c1 else { panic!() };
+                let UsedCubes::OneCube(c2) = c2 else { panic!() };
+
+                if c1 <= c2 {
+                    continue;
+                }
+
+                let mut map: HashMap<DiceValue, Calculation> = self
+                    .result_map_pool
+                    .pop()
+                    .or_else(|| Some(HashMap::new()))
+                    .unwrap();
+                calculate_result_map(map1, map2, &mut map);
+                maps.push((UsedCubes::TwoCubes(*c1, *c2), map));
+            }
+        }
+
+        while let Some((c, m)) = maps.pop() {
+            dp.insert(c, m);
+        }
+
+        // result of calculation of two cubes twice
+        for (cubes1, map1) in dp.iter() {
+            for (cubes2, map2) in dp.iter() {
+                if let UsedCubes::TwoCubes(c1, c2) = cubes1 {
+                    if let UsedCubes::TwoCubes(c3, c4) = cubes2 {
+                        if c1 == c3 || c1 == c4 || c2 == c3 || c2 == c4 {
+                            continue;
+                        }
+
+                        checking.retain(|x| {
+                            if has_solution(map1, map2, *x as DiceValue) {
+                                let _ = found.insert(*x);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        // three cubes
+        let mut maps = Vec::new();
+        for (cubes1, map1) in dp.iter() {
+            if let UsedCubes::OneCube(c1) = cubes1 {
+                for (cubes2, map2) in dp.iter() {
+                    if let UsedCubes::TwoCubes(c2, c3) = cubes2 {
+                        if c1 == c2 || c1 == c3 {
+                            continue;
+                        }
+
+                        let mut map: HashMap<DiceValue, Calculation> = self
+                            .result_map_pool
+                            .pop()
+                            .or_else(|| Some(HashMap::new()))
+                            .unwrap();
+                        calculate_result_map(map1, map2, &mut map);
+                        maps.push((UsedCubes::ThreeCubes(*c1, *c2, *c3), map));
+                    }
+                }
+            }
+        }
+
+        while let Some((c, m)) = maps.pop() {
+            dp.insert(c, m);
+        }
+
+        // result of calculation of three cubes and single cube
+        for (cubes1, map1) in dp.iter() {
+            if let UsedCubes::OneCube(c1) = cubes1 {
+                for (cubes2, map2) in dp.iter() {
+                    if let UsedCubes::ThreeCubes(c2, c3, c4) = cubes2 {
+                        if c1 == c2 || c1 == c3 || c1 == c4 {
+                            continue;
+                        }
+
+                        checking.retain(|x| {
+                            if has_solution(map1, map2, *x as DiceValue) {
+                                let _ = found.insert(*x);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        for (_, mut map1) in self.dp.drain() {
+            map1.clear();
+            self.result_map_pool.push(map1);
+        }
+
+        let mut found = found.iter().collect::<Vec<_>>();
+        found.sort();
+        solutions.clear();
+        solutions.extend(found.iter().map(|&&x| x as u16));
+    }
+
     fn solve_three(&mut self) {
         let n = self.num.clone();
         let mut ds: [DiceValue; 3] = [0; 3];
@@ -117,10 +362,15 @@ impl Game {
                             continue;
                         }
 
-                        check_for_solutions(map1, map2, &mut self.solutions, n.clone())
+                        check_for_solutions(map1, map2, &mut self.solutions, n.clone());
                     }
                 }
             }
+        }
+
+        for (_, mut map1) in self.dp.drain() {
+            map1.clear();
+            self.result_map_pool.push(map1);
         }
     }
 
@@ -426,6 +676,71 @@ fn check_for_solutions(
             }
         }
     }
+}
+
+fn has_solution(
+    map1: &HashMap<DiceValue, Calculation>,
+    map2: &HashMap<DiceValue, Calculation>,
+    n: DiceValue,
+) -> bool {
+    for (r1, _) in map1 {
+        for (r2, _) in map2 {
+            if let Some(add) = r1.checked_add(*r2) {
+                if add == n {
+                    return true;
+                }
+            }
+
+            if r1 >= r2 {
+                if let Some(sub) = r1.checked_sub(*r2) {
+                    if sub == n {
+                        return true;
+                    }
+                }
+            }
+
+            if r2 >= r1 {
+                if let Some(sub) = r2.checked_sub(*r1) {
+                    if sub == n {
+                        return true;
+                    }
+                }
+            }
+
+            if let Some(mult) = r1.checked_mul(*r2) {
+                if mult == n {
+                    return true;
+                }
+            }
+
+            if *r2 > 0 {
+                if *r1 % 10 == 0 && *r2 % 10 == 0 && *r1 > 0 {
+                    continue;
+                }
+                if let Some(div) = r1.checked_div(*r2) {
+                    if div * *r2 == *r1 {
+                        if div as DiceValue == n {
+                            return true;
+                        }
+                    }
+                }
+            }
+            if *r1 > 0 {
+                if *r1 % 10 == 0 && *r2 % 10 == 0 && *r2 > 0 {
+                    continue;
+                }
+                if let Some(div) = r2.checked_div(*r1) {
+                    if div * *r1 == *r2 {
+                        if div as DiceValue == n {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 impl std::fmt::Display for Game {
